@@ -57,14 +57,14 @@ else:
 
 
 
-api_key = 'APIKEY'
+api_key = 'API-KEY'
 
 client = OpenAI(api_key=api_key)
 
 chat_completion = client.chat.completions.create(
     messages=[
         {"role": "system", "content": "あなたは疲れているビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。働きすぎている人に警告を出す語調で話してください。"},
-        {"role": "user", "content": "5分程度でできるマインドフルネスのメニューを紹介してください。"}
+        {"role": "user", "content": f"{record[1]}の傾向がある人はどんな人か、教えて下さい。その後、{record[5]}を紹介してください。"}
     ],
     model="gpt-3.5-turbo",
 )
