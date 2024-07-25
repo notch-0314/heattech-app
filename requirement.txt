@@ -2,3 +2,5 @@ requests
 pandas
 openai
 fastapi
+uvicorn
+sqlalchemy
