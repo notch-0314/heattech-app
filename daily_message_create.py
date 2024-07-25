@@ -65,7 +65,7 @@ else:
 conn.close()
 
 '''
-## GPTにコーピングリストを渡して文章を生成
+## GPTにコーピングリストを渡して文章を生成（GPTを稼働させないためコメントアウト）
 api_key = 'api-key'
 
 client = OpenAI(api_key=api_key)
@@ -98,7 +98,7 @@ for row in rows:
 # データベース接続を閉じる
 conn.close()
 
-# 4カラム目に「1」が含まれているかどうかをチェック
+# 4カラム目に「1」が含まれているか、前日比のスコアで文章を出し分け
 if any(row[3] == 1 for row in rows) and todays_score - previous_days_score > 0:
     daily_message = '昨日より今日のほうがスコアが良いです。休息を取ったからですね。'
 elif any(row[3] == 1 for row in rows) and todays_score - previous_days_score <= 0:
