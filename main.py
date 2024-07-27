@@ -1,7 +1,7 @@
 import requests
 import json
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 from openai import OpenAI
 import os
@@ -12,6 +12,13 @@ from models import SessionLocal
 from typing import List
 import models
 
+#以下、ログインに必要な機能をインポート
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from schemas import Token, User, UserInDB
+from typing import Optional
+import pytz
 
 app = FastAPI()
 
@@ -110,3 +117,98 @@ async def coping_finish(db: Session = Depends(get_db)):
         'latest_heart_rate': latest_heart_rate,
         'satisfaction_score': satisfaction_score
     }
+
+#以下ログインのための各種API作成
+# シークレットキーの設定
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# パスワードのハッシュ化のための設定
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# OAuth2の設定
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# ユーザーの認証
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[datetime] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# ユーザーを取得する関数
+def get_user(db, username: str):
+    return db.query(models.Usertable).filter(models.Usertable.user_name == username).first()
+
+# ユーザーの認証
+def authenticate_user(db, username: str, password: str):
+    user = get_user(db, username)
+    if not user:
+        return False
+    if not verify_password(password, user.password):
+        return False
+    return user
+
+# トークンのデコード
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = get_user(db, username=username)
+    if user is None:
+        raise credentials_exception
+    return user
+
+# ログインAPI
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.user_name}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# ユーザーの登録API
+@app.post("/register")
+async def register_user(user: User, db: Session = Depends(get_db)):
+    db_user = models.Usertable(
+        user_name=user.user_name,
+        email=user.email,
+        password=get_password_hash(user.password),
+        type_id=0,  # 仮の値
+        occupation_id="unknown",  # 仮の値
+        overtime_id=0,  # 仮の値
+        create_datetime=datetime.now(pytz.timezone('Asia/Tokyo')),
+        update_datetime=datetime.now(pytz.timezone('Asia/Tokyo'))
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
