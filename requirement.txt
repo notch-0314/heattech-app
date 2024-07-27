@@ -1,6 +1,9 @@
-requests
-pandas
-openai
 fastapi
 uvicorn
 sqlalchemy
+requests
+pandas
+openai
+pytz
+passlib[bcrypt]
+python-jose
