@@ -211,4 +211,8 @@ async def register_user(user: User, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+<<<<<<< HEAD
     return db_user
+=======
+    return db_user
+>>>>>>> 4ae4b6ea90887f770f261825179b00bca92a6984
