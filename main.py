@@ -125,7 +125,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # パスワードのハッシュ化のための設定
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 # OAuth2の設定
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -211,8 +211,4 @@ async def register_user(user: User, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-<<<<<<< HEAD
     return db_user
-=======
-    return db_user
->>>>>>> 4ae4b6ea90887f770f261825179b00bca92a6984
