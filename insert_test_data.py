@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 import pytz
+from passlib.context import CryptContext
 
 DATABASE_URL = "sqlite:///./heattech.db"
 
@@ -14,6 +15,9 @@ Base = declarative_base()
 def jst_now():
     return datetime.now(pytz.timezone('Asia/Tokyo'))
 
+# パスワードのハッシュ化のための設定
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
 class CopingMessage(Base):
     __tablename__ = "coping_message"
 
@@ -24,8 +28,8 @@ class CopingMessage(Base):
     satisfaction_score = Column(String(225))
     heart_rate_before = Column(Integer)
     heart_rate_after = Column(Integer)
-    create_datetime = Column(DateTime, default=jst_now) #日本時間のDATETIME型にしますか？
-    update_datetime = Column(DateTime, default=jst_now, onupdate=jst_now) #日本時間のDATETIME型にしますか？
+    create_datetime = Column(DateTime, default=jst_now)
+    update_datetime = Column(DateTime, default=jst_now, onupdate=jst_now)
 
 class Usertable(Base):
     __tablename__ = "user_table"
@@ -37,8 +41,8 @@ class Usertable(Base):
     type_id = Column(Integer)
     occupation_id = Column(String(225))
     overtime_id = Column(Integer)
-    create_datetime = Column(DateTime, default=jst_now) #日本時間のDATETIME型にしますか？
-    update_datetime = Column(DateTime, default=jst_now, onupdate=jst_now) #日本時間のDATETIME型にしますか？
+    create_datetime = Column(DateTime, default=jst_now)
+    update_datetime = Column(DateTime, default=jst_now, onupdate=jst_now)
 
 Base.metadata.create_all(bind=engine)
 
@@ -46,16 +50,16 @@ Base.metadata.create_all(bind=engine)
 test_data = [
     Usertable(
         user_name="田中太郎",
-        email="test1@example.com",
-        password="password1",
+        email="new_test1@example.com",  # 異なるメールアドレス
+        password=pwd_context.hash("password1"),  # パスワードをハッシュ化
         type_id=1,
         occupation_id="1",
         overtime_id=10
     ),
     Usertable(
         user_name="山田花子",
-        email="test2@example.com",
-        password="password2",
+        email="new_test2@example.com",  # 異なるメールアドレス
+        password=pwd_context.hash("password2"),  # パスワードをハッシュ化
         type_id=2,
         occupation_id="2",
         overtime_id=20
@@ -64,6 +68,10 @@ test_data = [
 
 # データベースにテストデータを挿入する関数
 def insert_test_data(session: Session, data):
+    # 既存のデータを削除
+    session.query(Usertable).delete()
+    session.commit()
+    
     for record in data:
         session.add(record)
     session.commit()
