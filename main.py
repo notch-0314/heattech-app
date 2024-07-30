@@ -30,6 +30,7 @@ def read_heart_rate():
     }
     response = requests.request('GET', url, headers=headers, params=params)
     data = response.json()
+    print(data)
     latest_bpm = data['data'][-1]['bpm'] if 'data' in data and len(data['data']) > 0 else None
     print(latest_bpm)
     return(latest_bpm)
@@ -84,7 +85,10 @@ async def coping_start(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail='心拍数が見つかりません')
     coping_message_id = 1
     update_heart_rate_before(db, coping_message_id, latest_heart_rate)
-    return{"message": "心拍数を取得しました", "heart_rate_before": latest_heart_rate}
+    return{
+            "message": "心拍数を取得しました",
+            "heart_rate_before": latest_heart_rate
+        }
 
 #コーピング実施後の満足度登録/心拍数取得/メッセージ表示API
 @app.post('/coping_finish')
