@@ -2,24 +2,51 @@ import requests
 import json
 import pandas as pd
 from datetime import datetime
-import sqlite3
+import mysql.connector
 from openai import OpenAI
 import os
 from fastapi import FastAPI, HTTPException, Request, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import text
-from models import SessionLocal
+from sqlalchemy import text, create_engine
+from models import CopingMessage
 from typing import List
 import models
+from db.db_init import initialize_database
+from db.db_config import SessionLocal
 
 
 app = FastAPI()
+print('test')
+initialize_database()
+
+# SQLAlchemy Database Connection
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # 指定した日付のコーピングメッセージを取得する関数
+'''
 def fetch_coping_message(db: Session):
     sql = text("SELECT * FROM coping_message WHERE create_datetime LIKE '2024-07-10%'")
     result = db.execute(sql).fetchall()
     return [dict(row._mapping) for row in result]
+
+def fetch_coping_message(conn):
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM coping_message WHERE create_datetime LIKE '2024-07-10%'")
+    result = cursor.fetchall()
+    cursor.close()
+    return result
+
+'''
+
+# 指定した日付のコーピングメッセージを取得する関数
+def fetch_coping_message(db: Session):
+    result = db.query(CopingMessage).filter(CopingMessage.create_datetime.like('2024-07-31%')).all()
+    return [message.__dict__ for message in result]
 
 # 最新の心拍数を取得する関数
 def read_heart_rate():
@@ -37,39 +64,39 @@ def read_heart_rate():
 
 # 心拍数をheart_rate_beforeに登録する関数
 def update_heart_rate_before(db: Session, coping_message_id: int, heart_rate_before: int):
-    sql = text("UPDATE coping_message SET heart_rate_before = :heart_rate_before WHERE coping_message_id = :coping_message_id")
-    db.execute(sql, {'heart_rate_before': heart_rate_before, 'coping_message_id': coping_message_id})
-    db.commit()
-
-# 満足度を登録する関数
-def update_satisfaction_score(db: Session, coping_message_id: int, satisfaction_score: int):
-    sql = text("UPDATE coping_message SET satisfaction_score = :satisfaction_score WHERE coping_message_id = :coping_message_id")
-    db.execute(sql, {'satisfaction_score': satisfaction_score, 'coping_message_id': coping_message_id})
-    db.commit()
-
-# 心拍数をheart_rate_afterに登録する関数
-def update_heart_rate_after(db: Session, coping_message_id: int, heart_rate_after: int):
-    sql = text("UPDATE coping_message SET heart_rate_after = :heart_rate_after WHERE coping_message_id = :coping_message_id")
-    db.execute(sql, {'heart_rate_after': heart_rate_after, 'coping_message_id': coping_message_id})
-    db.commit()
-
-# 特定のcoping_message_idのheart_rate_beforeを取得する関数
-def get_heart_rate_before(db: Session, coping_message_id: int):
-    sql = text("SELECT * FROM coping_message WHERE coping_message_id = :coping_message_id")
-    result = db.execute(sql, {'coping_message_id': coping_message_id}).fetchone()
-    if result:
-        result_dict = dict(result._mapping)
-        print(f'結果は{result_dict}')
-        return(result_dict["heart_rate_before"])
+    coping_message = db.query(CopingMessage).filter(CopingMessage.coping_message_id == coping_message_id).first()
+    if coping_message:
+        coping_message.heart_rate_before = heart_rate_before
+        db.commit()
     else:
         raise HTTPException(status_code=404, detail="Coping message not found")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# 満足度を登録する関数
+# 満足度を登録する関数
+def update_satisfaction_score(db: Session, coping_message_id: int, satisfaction_score: str):
+    coping_message = db.query(CopingMessage).filter(CopingMessage.coping_message_id == coping_message_id).first()
+    if coping_message:
+        coping_message.satisfaction_score = satisfaction_score
+        db.commit()
+    else:
+        raise HTTPException(status_code=404, detail="Coping message not found")
+
+# 心拍数をheart_rate_afterに登録する関数
+def update_heart_rate_after(db: Session, coping_message_id: int, heart_rate_after: int):
+    coping_message = db.query(CopingMessage).filter(CopingMessage.coping_message_id == coping_message_id).first()
+    if coping_message:
+        coping_message.heart_rate_after = heart_rate_after
+        db.commit()
+    else:
+        raise HTTPException(status_code=404, detail="Coping message not found")
+
+# 特定のcoping_message_idのheart_rate_beforeを取得する関数
+def get_heart_rate_before(db: Session, coping_message_id: int):
+    coping_message = db.query(CopingMessage).filter(CopingMessage.coping_message_id == coping_message_id).first()
+    if coping_message:
+        return coping_message.heart_rate_before
+    else:
+        raise HTTPException(status_code=404, detail="Coping message not found")
 
 # コーピングメッセージ取得API
 @app.get('/coping_message')
