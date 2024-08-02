@@ -1,25 +1,30 @@
 import requests
 import json
 import pandas as pd
-from datetime import datetime
 import mysql.connector
 from openai import OpenAI
 import os
 from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from schemas import Token, UserCreate, UserInDB
+from starlette.status import HTTP_401_UNAUTHORIZED
 from sqlalchemy.orm import Session
 from sqlalchemy import text, create_engine
-from models import CopingMessage
-from typing import List
-import models
+from models import CopingMessage, User
+from typing import List, Optional
 from db.db_init import initialize_database
 from db.db_config import SessionLocal
+from datetime import datetime, timedelta
+import pytz
+
 
 
 app = FastAPI()
-print('test')
 initialize_database()
 
-# SQLAlchemy Database Connection
+# SQLAlchemyのDB接続
 def get_db():
     db = SessionLocal()
     try:
@@ -27,21 +32,67 @@ def get_db():
     finally:
         db.close()
 
-# 指定した日付のコーピングメッセージを取得する関数
-'''
-def fetch_coping_message(db: Session):
-    sql = text("SELECT * FROM coping_message WHERE create_datetime LIKE '2024-07-10%'")
-    result = db.execute(sql).fetchall()
-    return [dict(row._mapping) for row in result]
+# シークレットキーの設定
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-def fetch_coping_message(conn):
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM coping_message WHERE create_datetime LIKE '2024-07-10%'")
-    result = cursor.fetchall()
-    cursor.close()
-    return result
+# パスワードのハッシュ化のための設定
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
-'''
+# OAuth2の設定
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# パスワードの検証
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+# パスワードのハッシュ化
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+# アクセストークンの作成
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# ユーザーを取得する関数
+def get_user(db: Session, username: str):
+    return db.query(User).filter(User.user_name == username).first()
+
+# ユーザーの認証
+def authenticate_user(db: Session, username: str, password: str):
+    user = get_user(db, username)
+    if not user:
+        return False
+    if not verify_password(password, user.password):
+        return False
+    return user
+
+# トークンのデコード
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = get_user(db, username=username)
+    if user is None:
+        raise credentials_exception
+    return user
 
 # 指定した日付のコーピングメッセージを取得する関数
 def fetch_coping_message(db: Session):
@@ -72,7 +123,6 @@ def update_heart_rate_before(db: Session, coping_message_id: int, heart_rate_bef
         raise HTTPException(status_code=404, detail="Coping message not found")
 
 # 満足度を登録する関数
-# 満足度を登録する関数
 def update_satisfaction_score(db: Session, coping_message_id: int, satisfaction_score: str):
     coping_message = db.query(CopingMessage).filter(CopingMessage.coping_message_id == coping_message_id).first()
     if coping_message:
@@ -97,6 +147,41 @@ def get_heart_rate_before(db: Session, coping_message_id: int):
         return coping_message.heart_rate_before
     else:
         raise HTTPException(status_code=404, detail="Coping message not found")
+
+# ログインAPI
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.user_name}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# ユーザーの登録API
+@app.post("/register")
+async def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = User(
+        user_name=user.user_name,
+        email=user.email,
+        password=get_password_hash(user.password),
+        type_id=0,  # 仮の値
+        occupation_id="unknown",  # 仮の値
+        overtime_id=0,  # 仮の値
+        create_datetime=datetime.now(pytz.timezone('Asia/Tokyo')),
+        update_datetime=datetime.now(pytz.timezone('Asia/Tokyo'))
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 
 # コーピングメッセージ取得API
 @app.get('/coping_message')
