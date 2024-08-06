@@ -38,7 +38,7 @@ def fetch_coping_master(db: Session, score_id: int):
     result = db.query(CopingMaster).filter(CopingMaster.type_name == '焦燥', CopingMaster.score_id == score_id, CopingMaster.time == 180).all()
     return result
 
-# APIリクエストを実行する関数
+# OuraAPIから昨日と今日のスコアを取得する関数
 def fetch_daily_readiness(api_key: str):
 
     url = 'https://api.ouraring.com/v2/usercollection/daily_readiness'
@@ -72,6 +72,65 @@ def fetch_daily_readiness(api_key: str):
 
     return yesterdays_score, todays_score
 
+# ユーザーによってOuraAPIキーを変える関数
+def select_api_key(user):
+    if user.oura_id == 1:
+        return OURA_API_KEY_1
+    elif user.oura_id == 2:
+        return OURA_API_KEY_2
+    else:
+        print(f"Invalid user type for user {user.user_name}")
+        return None
+
+# 今日のスコアからscore_idを取得する関数
+def calculate_score_id(todays_score):
+    if 0 <= todays_score <= 59:
+        return 1
+    elif 60 <= todays_score <= 69:
+        return 2
+    elif 70 <= todays_score <= 84:
+        return 3
+    elif 85 <= todays_score <= 100:
+        return 4
+    else:
+        return None
+
+# GPTを利用する関数
+def generate_gpt_response(coping_how_to_rest):
+    client = OpenAI(api_key=GPT_API_KEY)
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": "あなたは疲れているビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。働きすぎている人に警告を出す語調で話してください。"},
+            {"role": "user", "content": f" {coping_how_to_rest}を紹介してください。"}
+        ],
+        model="gpt-3.5-turbo",
+    )
+    return chat_completion.choices[0].message.content
+
+# coping_messageを保存する関数
+def save_coping_message(db, user_id, message_text):
+    new_coping_message = CopingMessage(
+        user_id=user_id,
+        coping_message_text=message_text,
+        satisfaction_score="とても良い",
+        heart_rate_before=0,
+        heart_rate_after=0
+    )
+    db.add(new_coping_message)
+    db.commit()
+
+# daily_messageを保存する関数
+def save_daily_message(db, user_id, daily_message_text, yesterdays_score, todays_score):
+    new_daily_message = DailyMessage(
+        user_id=user_id,
+        daily_message_text=daily_message_text,
+        previous_days_score=yesterdays_score,
+        todays_days_score=todays_score
+    )
+    db.add(new_daily_message)
+    db.commit()
+
 def main():
 
     # データベースセッションの作成
@@ -82,13 +141,9 @@ def main():
     users = db.query(User).all()
 
     for user in users:
-        # ユーザーのuser_typeに基づいてAPIキーを選択
-        if user.oura_id == 1:
-            api_key = OURA_API_KEY_1
-        elif user.oura_id == 2:
-            api_key = OURA_API_KEY_2
-        else:
-            print(f"Invalid user type for user {user.user_name}")
+        # APIキーの選択
+        api_key = select_api_key(user)
+        if api_key is None:
             continue
 
         # APIからスコアを取得
@@ -96,17 +151,10 @@ def main():
         if todays_score is None:
             continue
 
-        # scoreに基づいてscore_idを計算
-        if 0 <= todays_score <= 59:
-            score_id = 1
-        elif 60 <= todays_score <= 69:
-            score_id = 2
-        elif 70 <= todays_score <= 84:
-            score_id = 3
-        elif 85 <= todays_score <= 100:
-            score_id = 4
-        else:
-            print(f"Invalid score range for user {user.user_name}")
+        # スコアIDの計算
+        score_id = calculate_score_id(todays_score)
+        if score_id is None:
+            print(f"{user.user_name}のスコアIDはありません")
             continue
 
         # scoreとscore_idを出力
@@ -117,36 +165,11 @@ def main():
         # コーピングマスタに照合
         result = fetch_coping_master(db, score_id)
 
-        # 結果を出力
+        # 結果を出力し、GPT応答生成と保存
         for coping in result:
             print(f"Coping Type: {coping.type_name}, Rest Type: {coping.rest_type}, How to Rest: {coping.how_to_rest}")
-
-            api_key = GPT_API_KEY
-
-            client = OpenAI(api_key=api_key)
-
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "あなたは疲れているビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。働きすぎている人に警告を出す語調で話してください。"},
-                    {"role": "user", "content": f" {coping.how_to_rest}を紹介してください。"}
-                ],
-                model="gpt-3.5-turbo",
-            )
-            # GPTの応答を取得
-            message_text = chat_completion.choices[0].message.content
-
-            # CopingMessageインスタンスを作成してデータベースに保存
-            new_coping_message = CopingMessage(
-                user_id=user.user_id,
-                coping_message_text=message_text,
-                satisfaction_score="とても良い",
-                heart_rate_before=0,
-                heart_rate_after=0
-            )
-
-            db.add(new_coping_message)
-            db.commit()
-
+            message_text = generate_gpt_response(coping.how_to_rest)
+            save_coping_message(db, user.user_id, message_text)
             print(message_text)
             print("-" * 50)
         
@@ -176,16 +199,7 @@ def main():
                 daily_message_text = '昨日とスコアは同じか少し低下しています。休息が取れていないので、積極的に休息を取りましょう。'
         
         # daily_messagesテーブルにメッセージを格納
-        # CopingMessageインスタンスを作成してデータベースに保存
-        new_daily_message = DailyMessage(
-            user_id=user.user_id,
-            daily_message_text=daily_message_text,
-            previous_days_score=yesterdays_score,
-            todays_days_score=todays_score
-        )
-
-        db.add(new_daily_message)
-        db.commit()
+        save_daily_message(db, user.user_id, daily_message_text, yesterdays_score, todays_score)
 
 
     # セッションのクローズ
