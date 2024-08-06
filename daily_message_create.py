@@ -20,10 +20,8 @@ OURA_API_KEY_2 = os.getenv('OURA_API_KEY_2')
 GPT_API_KEY = os.getenv('GPT_API_KEY')
 
 # 日付に関する定義
-today = datetime.today()
-yesterday = today - timedelta(days=1)
-yesterday_date = yesterday.strftime('%Y-%m-%d')
-today_date = today.strftime('%Y-%m-%d')
+yesterday_date = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+today_date = datetime.today().strftime('%Y-%m-%d')
 
 # SQLAlchemyのDB接続
 def get_db():
@@ -50,22 +48,20 @@ def fetch_daily_readiness(api_key: str):
         'Authorization': f'Bearer {api_key}'
     }
     response = requests.get(url, headers=headers, params=params)
-    
+
     if response.status_code != 200:
         print(f"Failed to fetch data from API, status code: {response.status_code}")
         return None, None
-    
+
     data = response.json()
-    
+
     if not data['data']:
         print("No data found for today")
         return None, None
-    
-    print(json.dumps(data, indent=2))  # レスポンス全体を出力して構造を確認
-    
+
     # データからスコアを抽出
     scores = {entry['day']: entry['score'] for entry in data['data']}
-    
+
     yesterdays_score = scores.get(yesterday_date)
     todays_score = scores.get(today_date)
     print(yesterdays_score, todays_score)
