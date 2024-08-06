@@ -12,7 +12,7 @@ from schemas import Token, UserCreate, UserInDB
 from starlette.status import HTTP_401_UNAUTHORIZED
 from sqlalchemy.orm import Session
 from sqlalchemy import text, create_engine
-from models import CopingMessage, User
+from models import CopingMessage, User, DailyMessage
 from typing import List, Optional
 from db.db_init import initialize_database
 from db.db_config import SessionLocal

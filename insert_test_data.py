@@ -13,7 +13,7 @@ def jst_now():
 # パスワードのハッシュ化のための設定
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
-# テーブルの作成
+# テーブルの再作成
 Base.metadata.drop_all(bind=engine, tables=[Base.metadata.tables['users']])
 Base.metadata.create_all(bind=engine, tables=[Base.metadata.tables['users']])
 

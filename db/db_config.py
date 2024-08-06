@@ -22,3 +22,5 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # ベースクラスの宣言
 Base = declarative_base()
+
+
