@@ -11,15 +11,14 @@ from passlib.context import CryptContext
 from schemas import Token, UserCreate, UserInDB
 from starlette.status import HTTP_401_UNAUTHORIZED
 from sqlalchemy.orm import Session
-from sqlalchemy import text, create_engine
+from sqlalchemy import text, create_engine, func
 from models import CopingMessage, User, DailyMessage
 from typing import List, Optional
 from db.db_init import initialize_database
 from db.db_config import SessionLocal
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 import pytz
-
-
 
 app = FastAPI()
 initialize_database()
@@ -37,11 +36,33 @@ SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+# .envファイルから環境変数を読み込む
+load_dotenv()
+
+# 環境変数からAPIキーを取得
+OURA_API_KEY_1 = os.getenv('OURA_API_KEY_1')
+OURA_API_KEY_2 = os.getenv('OURA_API_KEY_2')
+GPT_API_KEY = os.getenv('GPT_API_KEY')
+
+# 日付に関する定義
+yesterday_date = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+today_date = datetime.today().strftime('%Y-%m-%d')
+
 # パスワードのハッシュ化のための設定
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 # OAuth2の設定
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# ユーザーによってOuraAPIキーを変える関数
+def select_api_key(user):
+    if user.oura_id == 1:
+        return OURA_API_KEY_1
+    elif user.oura_id == 2:
+        return OURA_API_KEY_2
+    else:
+        print(f"Invalid user type for user {user.user_name}")
+        return None
 
 # パスワードの検証
 def verify_password(plain_password, hashed_password):
@@ -94,10 +115,47 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
-# 指定した日付のコーピングメッセージを取得する関数
-def fetch_coping_message(db: Session):
-    result = db.query(CopingMessage).filter(CopingMessage.create_datetime.like('2024-07-31%')).all()
+# coping_messageを取得する関数
+def fetch_coping_message(db: Session, user_id: int):
+    result = db.query(CopingMessage).filter(
+        CopingMessage.user_id == user_id,
+        func.date(CopingMessage.create_datetime) == today_date
+    ).all()
     return [message.__dict__ for message in result]
+
+# daily_messageを取得する関数
+def fetch_daily_message(db: Session, user_id: int):
+    result = db.query(DailyMessage).filter(
+        DailyMessage.user_id == user_id,
+        func.date(DailyMessage.create_datetime) == today_date
+    ).first()
+    return result
+
+def fetch_contributer(api_key: str):
+
+    url = 'https://api.ouraring.com/v2/usercollection/daily_readiness'
+    params = {
+        'start_date': today_date,
+        'end_date': today_date
+    }
+    headers = {
+        'Authorization': f'Bearer {api_key}'
+    }
+    response = requests.get(url, headers=headers, params=params)
+
+    if response.status_code != 200:
+        print(f"Failed to fetch data from API, status code: {response.status_code}")
+        return None
+
+    data = response.json()
+
+    if not data['data']:
+        print("No data found for today")
+        return None
+
+    print(data)
+
+    return data
 
 # 最新の心拍数を取得する関数
 def read_heart_rate():
@@ -183,11 +241,20 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return db_user
 
 
-# コーピングメッセージ取得API
+# レコメンドページ情報取得API
 @app.get('/coping_message')
-async def get_coping_message(db: Session = Depends(get_db)):
-    messages = fetch_coping_message(db)
+async def get_coping_message(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    messages = fetch_coping_message(db, current_user.user_id)
     return messages
+
+# コンディションページ情報取得API
+@app.get('/condition')
+async def get_condition_info(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    message = fetch_daily_message(db, current_user.user_id)
+    api_key = select_api_key(current_user)
+    contributer = fetch_contributer(api_key)
+    print(f'返却する値は{message}と{contributer}です')
+    return message, contributer
 
 # コーピング実施前の心拍数取得API
 @app.post('/coping_start')
