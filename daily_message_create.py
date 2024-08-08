@@ -1,8 +1,5 @@
 import requests
-import json
-import pandas as pd
 from datetime import datetime, timedelta
-import sqlite3
 from openai import OpenAI
 import os
 from models import CopingMaster, User, CopingMessage, DailyMessage
@@ -10,6 +7,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 from db.db_config import SessionLocal
 from dotenv import load_dotenv
+import random
 
 # .envファイルから環境変数を読み込む
 load_dotenv()
@@ -22,6 +20,14 @@ GPT_API_KEY = os.getenv('GPT_API_KEY')
 # 日付に関する定義
 yesterday_date = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
 today_date = datetime.today().strftime('%Y-%m-%d')
+today = datetime.today().strftime('%Y-%m-%d')
+current_day = datetime.today().weekday()  # 月曜日=0, 日曜日=6
+
+# time_valuesを取得
+if current_day in [0, 1, 2, 3, 4]:  # 平日
+    time_values = (10, 60, 180)
+else:  # 休日
+    time_values = (60, 180, 200)
 
 # SQLAlchemyのDB接続
 def get_db():
@@ -32,13 +38,15 @@ def get_db():
         db.close()
 
 # 指定したコーピングをコーピングマスタから取得する関数
-def fetch_coping_master(db: Session, score_id: int):
-    result = db.query(CopingMaster).filter(CopingMaster.type_name == '焦燥', CopingMaster.score_id == score_id, CopingMaster.time == 180).all()
-    return result
+def fetch_coping_master(db: Session, score_id: int, time_value: int):
+    return db.query(CopingMaster).filter(
+        CopingMaster.type_name == '焦燥',
+        CopingMaster.score_id == score_id,
+        CopingMaster.time == time_value
+    ).all()
 
 # OuraAPIから昨日と今日のスコアを取得する関数
 def fetch_daily_readiness(api_key: str):
-
     url = 'https://api.ouraring.com/v2/usercollection/daily_readiness'
     params = {
         'start_date': yesterday_date,
@@ -47,26 +55,20 @@ def fetch_daily_readiness(api_key: str):
     headers = {
         'Authorization': f'Bearer {api_key}'
     }
-    response = requests.get(url, headers=headers, params=params)
 
+    response = requests.get(url, headers=headers, params=params)
     if response.status_code != 200:
         print(f"Failed to fetch data from API, status code: {response.status_code}")
         return None, None
 
     data = response.json()
-
     if not data['data']:
         print("No data found for today")
         return None, None
 
     # データからスコアを抽出
     scores = {entry['day']: entry['score'] for entry in data['data']}
-
-    yesterdays_score = scores.get(yesterday_date)
-    todays_score = scores.get(today_date)
-    print(yesterdays_score, todays_score)
-
-    return yesterdays_score, todays_score
+    return scores.get(yesterday_date), scores.get(today_date)
 
 # ユーザーによってOuraAPIキーを変える関数
 def select_api_key(user):
@@ -91,18 +93,67 @@ def calculate_score_id(todays_score):
     else:
         return None
 
-# GPTを利用する関数
-def generate_gpt_response(coping_how_to_rest):
-    client = OpenAI(api_key=GPT_API_KEY)
+# スコアに合わせてランダムにプロンプトを取得する関数
+def get_assistant_content(score_id):
+    if score_id == 1:
+        messages = [
+            "あなたの健康状態は非常に悪いです。このままでは仕事のパフォーマンスが落ち、最終的には重大な問題を引き起こす可能性があります。ご自身を大切にして、今すぐ休息を取ってください。",
+            "今の健康状態は非常に悪いです。このままではあなたの仕事にも影響が出てしまいます。一度、全てを忘れて休息を取ってください。",
+            "非常に疲れが溜まっています。このままでは健康に大きな影響が出ます。ご自身のために、今すぐ休んでください。"
+        ]
+    elif score_id == 2:
+        messages = [
+            "健康が少し悪化傾向にあります。今休息を取らなければ、さらに悪化し、重要な仕事に支障が出るかもしれません。あなたの努力は素晴らしいですが、早めに休息を心がけてください。",
+            "健康状態が少し悪化しています。今のうちに休息を取らないと、仕事に支障をきたす恐れがあります。早めの休息をお願いします。",
+            "最近、健康が悪化し始めています。今のうちに休息を取ることで、さらなる悪化を防げます。少しだけでも休んでください。"
+        ]
+    elif score_id == 3:
+        messages = [
+            "健康状態は通常です。この調子で健康を維持し、最高のパフォーマンスを発揮するために、適度な休息を取り入れてください。ご自身の健康が一番大切です。",
+            "現在の健康状態は良好です。この調子を維持するために、適度な休息を忘れずに取りましょう。健康が何よりも大切です。",
+            "あなたの健康状態は通常です。この調子で日々の疲れを取り除き、仕事のパフォーマンスを維持するために、適度な休息を取りましょう。"
+        ]
+    elif score_id == 4:
+        messages = [
+            "健康状態は良好です。この調子で健康を維持し、さらなる成功を収めるために、定期的な休息を続けてください！",
+            "今の健康状態は非常に良いです。この状態を維持するために、適度な休息を続けてください！",
+            "健康状態は非常に良好です。この調子で健康を保ち、さらなる成功を目指して休息を取り続けてください！"
+        ]
+    
+    return random.choice(messages)
 
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "あなたは疲れているビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。働きすぎている人に警告を出す語調で話してください。"},
-            {"role": "user", "content": f" {coping_how_to_rest}を紹介してください。"}
-        ],
-        model="gpt-3.5-turbo",
-    )
-    return chat_completion.choices[0].message.content
+# 取得したtime_valueの数だけcoping_masterからコーピングレコードを取得する関数
+def fetch_all_coping_lists(db: Session, score_id: int, time_values):
+    coping_lists = []
+    for time_value in time_values:
+        result = fetch_coping_master(db, score_id, time_value)
+        if result:
+            random_record = random.choice(result)  # ランダムに1行を選択
+            coping_lists.append(random_record)
+    return coping_lists
+
+# GPTを利用する関数
+def generate_gpt_response(coping_lists):
+    advice_lists = []
+    client = OpenAI(api_key=GPT_API_KEY)
+    for index, record in enumerate(coping_lists):
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "あなたは疲れているビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。彼らは責任感が強く、休むことに対して罪悪感を感じる傾向があります。"},
+                    {"role": "user", "content": "以下の休憩方法を50字以内で紹介してください。"},
+                    {"role": "user", "content": f"{record.rest_type}"}
+                ],
+                model="gpt-4-turbo",
+            )
+            advice = chat_completion.choices[0].message.content.strip()
+            advice_lists.append(advice)
+            print(f"Advice for coping item {index + 1}: {advice}")
+
+        except Exception as e:
+            print(f"Error processing coping item {index + 1}: {e}")
+
+    return advice_lists
 
 # coping_messageを保存する関数
 def save_coping_message(db, user_id, message_text):
@@ -115,6 +166,29 @@ def save_coping_message(db, user_id, message_text):
     )
     db.add(new_coping_message)
     db.commit()
+
+# coping_messageを取り出す関数
+def get_coping_results(db, user_id, today_date):
+    return db.query(CopingMessage).filter(
+        CopingMessage.user_id == user_id,
+        func.date(CopingMessage.create_datetime) == today_date,
+        CopingMessage.satisfaction_score.isnot(None)
+    ).all()
+
+# daily_messageを生成する関数
+def generate_daily_message_text(coping_results, todays_score, yesterdays_score):
+    if coping_results:
+        if todays_score >= yesterdays_score:
+            return '昨日より今日のほうがスコアが良い、または同じです。休息を取ったからですね。'
+        else:
+            return '昨日と比較してスコアは少し低下しています。休息を昨日よりも取るように心がけましょう。'
+    elif todays_score is None:
+        return '当日スコアがないため比較できません'
+    else:
+        if todays_score >= yesterdays_score:
+            return '日より今日のほうがスコアが良い、または同じです。この調子を維持するために、余裕があれば休息を取りましょう。'
+        else:
+            return '昨日と比較してスコアは少し低下しています。休息が取れていないので、積極的に休息を取りましょう。'
 
 # daily_messageを保存する関数
 def save_daily_message(db, user_id, daily_message_text, yesterdays_score, todays_score):
@@ -159,51 +233,35 @@ def main():
         print(f"Score ID: {score_id}")
 
         # コーピングマスタに照合
-        result = fetch_coping_master(db, score_id)
+        coping_lists = fetch_all_coping_lists(db, score_id, time_values)
 
-        # 結果を出力し、GPT応答生成と保存
-        for coping in result:
-            print(f"Coping Type: {coping.type_name}, Rest Type: {coping.rest_type}, How to Rest: {coping.how_to_rest}")
-            message_text = generate_gpt_response(coping.how_to_rest)
-            save_coping_message(db, user.user_id, message_text)
-            print(message_text)
+        # GPTにアクセス
+        advice_lists = generate_gpt_response(coping_lists)
+
+        # advice_listごとに保存
+        for advice_list in advice_lists:
+            save_coping_message(db, user.user_id, advice_list)
+            print(advice_list)
             print("-" * 50)
-        
-        # クエリの実行
-        coping_results = db.query(CopingMessage).filter(
-            and_(
-                CopingMessage.user_id == user.user_id,
-                func.date(CopingMessage.create_datetime) == today_date,
-                CopingMessage.satisfaction_score.isnot(None)
-            )
-        ).all()
 
+        # クエリの実行
+        coping_results = get_coping_results(db, user.user_id, today_date)
+
+        # 取得したコーピングメッセージの表示
         for coping in coping_results:
             print(f'当てはまるcoping_messageは{coping.coping_message_text, coping.satisfaction_score}')
 
-        if coping_results:
-            if todays_score > yesterdays_score:
-                daily_message_text = '昨日より今日のほうがスコアが良いです。休息を取ったからですね。'
-            else:
-                daily_message_text = '昨日とスコアは同じか少し低下しています。休息を昨日よりも取るように心がけましょう。'
-        elif todays_score is None:
-                daily_message_text = '当日スコアがないため比較できません'
-        else:
-            if todays_score > yesterdays_score:
-                daily_message_text = '昨日より今日のほうがスコアが良いです。この調子を維持するために、余裕があれば休息を取りましょう。'
-            else:
-                daily_message_text = '昨日とスコアは同じか少し低下しています。休息が取れていないので、積極的に休息を取りましょう。'
-        
-        # daily_messagesテーブルにメッセージを格納
-        save_daily_message(db, user.user_id, daily_message_text, yesterdays_score, todays_score)
+        # daily_messageの生成
+        daily_message_text = generate_daily_message_text(coping_results, todays_score, yesterdays_score)
 
+        # daily_messagesテーブルにdaily_messageを格納
+        save_daily_message(db, user.user_id, daily_message_text, yesterdays_score, todays_score)
 
     # セッションのクローズ
     db_gen.close()
 
 if __name__ == "__main__":
     main()
-
 
 
 
