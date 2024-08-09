@@ -5,6 +5,7 @@ import mysql.connector
 from openai import OpenAI
 import os
 from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -21,6 +22,16 @@ from dotenv import load_dotenv
 import pytz
 
 app = FastAPI()
+
+# CORSミドルウェアを追加
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # ここには許可するオリジンを指定します。全て許可する場合は["*"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 initialize_database()
 
 # SQLAlchemyのDB接続
@@ -121,7 +132,11 @@ def fetch_coping_message(db: Session, user_id: int):
         CopingMessage.user_id == user_id,
         func.date(CopingMessage.create_datetime) == today_date
     ).all()
-    return [message.__dict__ for message in result]
+
+    # 最後の3つのメッセージのみを取得
+    last_three_messages = result[-3:]
+
+    return [message.__dict__ for message in last_three_messages]
 
 # daily_messageを取得する関数
 def fetch_daily_message(db: Session, user_id: int):
@@ -205,6 +220,14 @@ def get_heart_rate_before(db: Session, coping_message_id: int):
         return coping_message.heart_rate_before
     else:
         raise HTTPException(status_code=404, detail="Coping message not found")
+    
+# user_idからユーザー名を取得する関数
+def fetch_user_name(db: Session, user_id: int):
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user:
+        return(user.user_name)
+    else:
+        raise HTTPException(status_code=404, detail="Coping message not found")
 
 # ログインAPI
 @app.post("/token", response_model=Token)
@@ -245,16 +268,35 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
 @app.get('/coping_message')
 async def get_coping_message(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     messages = fetch_coping_message(db, current_user.user_id)
-    return messages
+    return {
+        "user_name": current_user.user_name,
+        "coping_messages": [{"coping_message_id": message["coping_message_id"],
+                             "coping_message_text": message["coping_message_text"]
+                            } for message in messages]
+    }
 
 # コンディションページ情報取得API
 @app.get('/condition')
 async def get_condition_info(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    message = fetch_daily_message(db, current_user.user_id)
-    api_key = select_api_key(current_user)
-    contributer = fetch_contributer(api_key)
-    print(f'返却する値は{message}と{contributer}です')
-    return message, contributer
+    message = fetch_daily_message(db, current_user.user_id) # daily_messageを取得
+    api_key = select_api_key(current_user) # OuraのAPIキーを取得
+    contributer = fetch_contributer(api_key) # Ouraのスコアを取得
+    contributer_data = contributer['data'][0] if contributer['data'] else {} # Ouraスコアの中でcontributerデータを抽出
+    return {
+        "user_name": current_user.user_name,
+        "daily_message_text": message.daily_message_text,
+        "previous_days_score": message.previous_days_score,
+        "todays_days_score": message.todays_days_score,
+        "activity_balance": contributer_data.get('contributors', {}).get('activity_balance'),
+        "body_temperature": contributer_data.get('contributors', {}).get('body_temperature'),
+        "hrv_balance": contributer_data.get('contributors', {}).get('hrv_balance'),
+        "previous_day_activity": contributer_data.get('contributors', {}).get('previous_day_activity'),
+        "previous_night": contributer_data.get('contributors', {}).get('previous_night'),
+        "recovery_index": contributer_data.get('contributors', {}).get('recovery_index'),
+        "resting_heart_rate": contributer_data.get('contributors', {}).get('resting_heart_rate'),
+        "sleep_balance": contributer_data.get('contributors', {}).get('sleep_balance'),
+        "day": contributer_data.get('day')
+    }
 
 # コーピング実施前の心拍数取得API
 @app.post('/coping_start')
