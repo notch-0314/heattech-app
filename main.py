@@ -322,17 +322,34 @@ async def coping_start(request: Request, current_user: User = Depends(get_curren
 
 #コーピング実施後の満足度登録/心拍数取得/メッセージ表示API
 @app.post('/coping_finish')
-async def coping_finish(db: Session = Depends(get_db)):
-    # coping_message_idとsatisfaction_scoreを代入（フロントから取得）
-    coping_message_id = 1
-    satisfaction_score = 'とても良好'
-    # satisfaction_scoreを登録
-    update_satisfaction_score(db, coping_message_id, satisfaction_score)
-    latest_heart_rate = fetch_heart_rate()
+async def coping_finish(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # リクエストからcoping_message_idを取得
+    data = await request.json()
+    coping_message_id = data.get('coping_message_id')
+    if not coping_message_id:
+        raise HTTPException(status_code=400, detail="coping_message_idが必要です")
+    
+    # リクエストからsatisfaction_scoreを取得
+    satisfaction_score = data.get('satisfaction_score')
+    if not satisfaction_score:
+        raise HTTPException(status_code=400, detail="satisfaction_scoreが必要です")
+
+    # 心拍数取得
+    api_key = select_api_key(current_user) # OuraのAPIキーを取得
+    latest_heart_rate = fetch_heart_rate(api_key)
     if latest_heart_rate is None:
         raise HTTPException(status_code=404, detail='心拍数が見つかりません')
+    
+    # satisfaction_scoreを登録
+    update_satisfaction_score(db, coping_message_id, satisfaction_score)
+    
+    # 心拍数を登録
     update_heart_rate_after(db, coping_message_id, latest_heart_rate)
+
+    # heart_rate_beforeをテーブルから取得
     heart_rate_before = get_heart_rate_before(db, coping_message_id)
+
+    # heart_rate_beforeとheart_rate_afterを比較して、
     if latest_heart_rate < heart_rate_before:
         message = '休息により心拍数が下がり、リラックス傾向が高まりました。この調子で、定期的に休憩を取りましょう！'
     else:
