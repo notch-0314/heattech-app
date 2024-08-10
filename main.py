@@ -173,11 +173,11 @@ def fetch_contributer(api_key: str):
     return data
 
 # 最新の心拍数を取得する関数
-def read_heart_rate():
+def fetch_heart_rate(api_key: int):
     url = 'https://api.ouraring.com/v2/usercollection/heartrate'
     params = {}
     headers = {
-        'Authorization': 'Bearer YDSWVXKOZFL3BT4EV6KYXA2YVCXZA2IQ'
+        'Authorization': f'Bearer {api_key}'
     }
     response = requests.request('GET', url, headers=headers, params=params)
     data = response.json()
@@ -298,16 +298,25 @@ async def get_condition_info(current_user: User = Depends(get_current_user), db:
         "day": contributer_data.get('day')
     }
 
-# コーピング実施前の心拍数取得API
+# コーピング実施前の心拍数取得API。coping_message_idをリクエストに含める必要あり
 @app.post('/coping_start')
-async def coping_start(db: Session = Depends(get_db)):
-    latest_heart_rate = read_heart_rate()
+async def coping_start(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # リクエストからcoping_message_idを取得
+    data = await request.json()
+    coping_message_id = data.get('coping_message_id')
+    if not coping_message_id:
+        raise HTTPException(status_code=400, detail="coping_message_id is required")
+    
+    # 心拍数取得
+    api_key = select_api_key(current_user) # OuraのAPIキーを取得
+    latest_heart_rate = fetch_heart_rate(api_key)
     if latest_heart_rate is None:
         raise HTTPException(status_code=404, detail='心拍数が見つかりません')
-    coping_message_id = 1
+    
+    # 心拍数をcoping_messageに登録
     update_heart_rate_before(db, coping_message_id, latest_heart_rate)
     return{
-            "message": "心拍数を取得しました",
+            "message": "心拍数を登録しました",
             "heart_rate_before": latest_heart_rate
         }
 
@@ -319,7 +328,7 @@ async def coping_finish(db: Session = Depends(get_db)):
     satisfaction_score = 'とても良好'
     # satisfaction_scoreを登録
     update_satisfaction_score(db, coping_message_id, satisfaction_score)
-    latest_heart_rate = read_heart_rate()
+    latest_heart_rate = fetch_heart_rate()
     if latest_heart_rate is None:
         raise HTTPException(status_code=404, detail='心拍数が見つかりません')
     update_heart_rate_after(db, coping_message_id, latest_heart_rate)
