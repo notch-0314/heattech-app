@@ -320,7 +320,7 @@ async def coping_start(request: Request, current_user: User = Depends(get_curren
             "heart_rate_before": latest_heart_rate
         }
 
-#コーピング実施後の満足度登録/心拍数取得/メッセージ表示API
+#コーピング実施後の満足度登録/心拍数取得/メッセージ表示API。coping_message_id、satisfaction_scoreをリクエストに含める必要あり
 @app.post('/coping_finish')
 async def coping_finish(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # リクエストからcoping_message_idを取得
@@ -349,7 +349,7 @@ async def coping_finish(request: Request, current_user: User = Depends(get_curre
     # heart_rate_beforeをテーブルから取得
     heart_rate_before = get_heart_rate_before(db, coping_message_id)
 
-    # heart_rate_beforeとheart_rate_afterを比較して、
+    # heart_rate_beforeとheart_rate_afterを比較して、メッセージを作成
     if latest_heart_rate < heart_rate_before:
         message = '休息により心拍数が下がり、リラックス傾向が高まりました。この調子で、定期的に休憩を取りましょう！'
     else:
