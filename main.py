@@ -298,7 +298,7 @@ async def get_condition_info(current_user: User = Depends(get_current_user), db:
         "day": contributer_data.get('day')
     }
 
-# コーピング実施前の心拍数取得API
+# コーピング実施前の心拍数取得API。coping_message_idをリクエストに含める必要あり
 @app.post('/coping_start')
 async def coping_start(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # リクエストからcoping_message_idを取得
@@ -316,7 +316,7 @@ async def coping_start(request: Request, current_user: User = Depends(get_curren
     # 心拍数をcoping_messageに登録
     update_heart_rate_before(db, coping_message_id, latest_heart_rate)
     return{
-            "message": "心拍数を取得しました",
+            "message": "心拍数を登録しました",
             "heart_rate_before": latest_heart_rate
         }
 
