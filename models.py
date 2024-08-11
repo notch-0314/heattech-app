@@ -32,6 +32,7 @@ class CopingMessage(Base):
 
     coping_message_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    assistant_text = Column(Text)
     coping_message_text = Column(Text)
     satisfaction_score = Column(String)
     heart_rate_before = Column(Integer)

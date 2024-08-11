@@ -270,6 +270,7 @@ async def get_coping_message(current_user: User = Depends(get_current_user), db:
     messages = fetch_coping_message(db, current_user.user_id)
     return {
         "user_name": current_user.user_name,
+        "assistant_text": messages[0]["assistant_text"],
         "coping_messages": [{"coping_message_id": message["coping_message_id"],
                              "coping_message_text": message["coping_message_text"]
                             } for message in messages]

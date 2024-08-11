@@ -156,9 +156,10 @@ def generate_gpt_response(coping_lists):
     return advice_lists
 
 # coping_messageを保存する関数
-def save_coping_message(db, user_id, message_text):
+def save_coping_message(db, user_id, assistant_text, message_text):
     new_coping_message = CopingMessage(
         user_id=user_id,
+        assistant_text=assistant_text,
         coping_message_text=message_text,
         satisfaction_score="とても良い",
         heart_rate_before=0,
@@ -235,12 +236,15 @@ def main():
         # コーピングマスタに照合
         coping_lists = fetch_all_coping_lists(db, score_id, time_values)
 
+        # assistant_messageを生成
+        assistant_message = get_assistant_content(score_id)
+
         # GPTにアクセス
         advice_lists = generate_gpt_response(coping_lists)
 
         # advice_listごとに保存
         for advice_list in advice_lists:
-            save_coping_message(db, user.user_id, advice_list)
+            save_coping_message(db, user.user_id, assistant_message, advice_list)
             print(advice_list)
             print("-" * 50)
 
