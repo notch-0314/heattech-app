@@ -220,14 +220,6 @@ def get_heart_rate_before(db: Session, coping_message_id: int):
         return coping_message.heart_rate_before
     else:
         raise HTTPException(status_code=404, detail="Coping message not found")
-    
-# user_idからユーザー名を取得する関数
-def fetch_user_name(db: Session, user_id: int):
-    user = db.query(User).filter(User.user_id == user_id).first()
-    if user:
-        return(user.user_name)
-    else:
-        raise HTTPException(status_code=404, detail="Coping message not found")
 
 # ログインAPI
 @app.post("/token", response_model=Token)
@@ -272,7 +264,7 @@ async def get_coping_message(current_user: User = Depends(get_current_user), db:
         "user_name": current_user.user_name,
         "assistant_text": messages[0]["assistant_text"],
         "coping_messages": [{"coping_message_id": message["coping_message_id"],
-                             "coping_message_text": message["coping_message_text"]
+                            "coping_message_text": message["coping_message_text"]
                             } for message in messages]
     }
 
@@ -329,7 +321,7 @@ async def coping_finish(request: Request, current_user: User = Depends(get_curre
     coping_message_id = data.get('coping_message_id')
     if not coping_message_id:
         raise HTTPException(status_code=400, detail="coping_message_idが必要です")
-    
+
     # リクエストからsatisfaction_scoreを取得
     satisfaction_score = data.get('satisfaction_score')
     if not satisfaction_score:
