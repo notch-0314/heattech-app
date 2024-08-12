@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function Recommended() {
   const [data, setData] = useState({
@@ -15,9 +16,72 @@ export default function Recommended() {
   const [showEvaluationModal, setShowEvaluationModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [selectedOption, setSelectedOption] = useState('');
+  const [copingMessages, setCopingMessages] = useState([]);
+  const [userName, setUserName] = useState(''); 
+  const [assistantText, setAssistantText] = useState(''); // assistant_textを保存する状態
+  const [completedActivities, setCompletedActivities] = useState([]); // 実施済みアクティビティを追跡
+  const [heartRateBefore, setHeartRateBefore] = useState(null); // 心拍数（開始）
+  const [heartRateAfter, setHeartRateAfter] = useState(null); // 心拍数（終了）
+  const [evaluationMessage, setEvaluationMessage] = useState(''); // 評価メッセージ
+  const router = useRouter();
 
-  const handleImageClick = () => {
+  useEffect(() => {
+    async function fetchData() {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error("No token found");
+        router.push('/login'); 
+        return;
+      }
+
+      const response = await fetch('http://127.0.0.1:8000/coping_message', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCopingMessages(data.coping_messages.slice(0, 3)); 
+        setUserName(data.user_name); 
+        setAssistantText(data.assistant_text); // assistant_textを状態に保存
+      } else if (response.status === 401) {
+        console.error("Unauthorized, redirecting to login");
+        router.push('/login'); 
+      } else {
+        console.error("Failed to fetch coping messages", response.status);
+      }
+    }
+
+    fetchData();
+  }, [router]);
+
+  const handleImageClick = async (copingMessageId) => {
     setShowModal(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://127.0.0.1:8000/coping_start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ coping_message_id: copingMessageId }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHeartRateBefore(data.heart_rate_before || 80); // デフォルト値80bpm
+        setCompletedActivities([...completedActivities, copingMessageId]); // 実施済みアクティビティを追加
+      } else {
+        console.error("Failed to start coping", response.status);
+        setHeartRateBefore(80); // 取得失敗時のデフォルト値
+      }
+    } catch (error) {
+      console.error("An error occurred while starting coping", error);
+      setHeartRateBefore(80); // エラー時のデフォルト値
+    }
   };
 
   const handleEvaluationClick = () => {
@@ -29,9 +93,38 @@ export default function Recommended() {
     setSelectedOption(e.target.value);
   };
 
-  const handleEvaluate = () => {
+  const handleEvaluate = async () => {
     setShowEvaluationModal(false);
     setShowResultModal(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://127.0.0.1:8000/coping_finish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ 
+          coping_message_id: copingMessages[0]?.coping_message_id || 1, // 最初のメッセージを使うか、デフォルトIDを使用
+          satisfaction_score: selectedOption,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHeartRateAfter(data.latest_heart_rate || 80); // デフォルト値80bpm
+        setEvaluationMessage(data.message || 'デフォルトのメッセージ');
+      } else {
+        console.error("Failed to finish coping", response.status);
+        setHeartRateAfter(80); // 取得失敗時のデフォルト値
+        setEvaluationMessage('デフォルトのメッセージ');
+      }
+    } catch (error) {
+      console.error("An error occurred while finishing coping", error);
+      setHeartRateAfter(80); // エラー時のデフォルト値
+      setEvaluationMessage('デフォルトのメッセージ');
+    }
   };
 
   const getFeelingText = () => {
@@ -54,7 +147,7 @@ export default function Recommended() {
   return (
     <div className="flex flex-col items-center p-4 h-screen font-sans relative">
       <div className="w-full flex-grow overflow-auto pb-24">
-        <h1 className="text-lg font-bold">田中さんのコンディション</h1>
+        <h1 className="text-lg font-bold">{userName}さんのレコメンド</h1> 
 
         <div className="w-1/3 bg-green-100 p-4 my-4">
           <p className="text-left text-xs font-bold">レコメンド</p>
@@ -62,11 +155,7 @@ export default function Recommended() {
 
         <div className="relative w-full bg-gray-200 p-4 my-4">
           <p className="text-left">
-            高ストレス状態が続いており、意識的に休息をとることが必要です。
-            <br />
-            性格傾向からブレインフォグや燃え尽き症候群となる可能性が高く、
-            <br />
-            パフォーマンスが低下するリスクがあります。
+            {assistantText || '高ストレス状態が続いており、意識的に休息をとることが必要です。性格傾向からブレインフォグや燃え尽き症候群となる可能性が高く、パフォーマンスが低下するリスクがあります。'}
           </p>
         </div>
 
@@ -79,54 +168,37 @@ export default function Recommended() {
           </div>
         </div>
 
-        <div className="w-full p-4 my-2 text-sm">
-          <div className="flex">
-            <div className="w-2/3 bg-gray-200 p-4">
-              <p className="text-left">
-                緊張状態が続いています。目を閉じて、長い呼吸を1~2分程度してみましょう。
-              </p>
-            </div>
-            <div className="w-1/3 flex justify-center items-center">
-              <div className="flex space-x-1">
-                <div className="cursor-pointer" onClick={handleImageClick}>
-                  <Image src="/action.png" alt="Action" width={60} height={60} />
+        {copingMessages.map((message, index) => (
+          <div key={index} className="w-full p-4 my-2 text-sm">
+            <div className="flex">
+              <div className="w-2/3 bg-gray-200 p-4">
+                <p className="text-left">{message.coping_message_text}</p>
+              </div>
+              <div className="w-1/3 flex justify-center items-center relative">
+                <div className="flex space-x-1">
+                  <div 
+                    className="cursor-pointer relative" 
+                    onClick={() => handleImageClick(message.coping_message_id)}
+                  >
+                    <Image 
+                      src="/action.png" 
+                      alt="Action" 
+                      width={60} 
+                      height={60} 
+                      style={{
+                        filter: completedActivities.includes(message.coping_message_id) ? 'grayscale(100%)' : 'grayscale(0%)',
+                        opacity: completedActivities.includes(message.coping_message_id) ? 0.5 : 1
+                      }} 
+                    />
+                    {completedActivities.includes(message.coping_message_id) && (
+                      <p className="absolute -top-3 left-0 text-xs text-gray-500">実施済み</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <div className="w-full p-4 my-2 text-sm">
-          <div className="flex">
-            <div className="w-2/3 bg-gray-200 p-4">
-              <p className="text-left">
-                〇〇公園では、紫陽花が見ごろのようです。気分転換に散歩してみてはいかがでしょう。
-              </p>
-            </div>
-            <div className="w-1/3 flex justify-center items-center">
-              <div className="flex space-x-1">
-                <div className="cursor-pointer" onClick={handleImageClick}>
-                  <Image src="/action.png" alt="Action" width={60} height={60} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="w-full p-4 my-2 text-sm">
-          <div className="flex">
-            <div className="w-2/3 bg-gray-200 p-4">
-              <p className="text-left">
-                〇〇では、入浴＋サウナセットがXXXXで入れます。脳疲労が取れるので、あなたにお勧めです。
-              </p>
-            </div>
-            <div className="w-1/3 flex justify-center items-center">
-              <div className="flex space-x-1">
-                <div className="cursor-pointer" onClick={handleImageClick}>
-                  <Image src="/action.png" alt="Action" width={60} height={60} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
       <div className="w-full border-t border-gray-300 pt-4 fixed bottom-0 bg-white">
@@ -269,54 +341,50 @@ export default function Recommended() {
         </div>
       )}
 
-{showResultModal && (
-  <div
-    className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50"
-    onClick={() => setShowResultModal(false)}
-  >
-    <div
-      className="relative w-full max-w-screen-sm mx-auto flex flex-col items-center justify-center"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div style={{ position: 'relative', width: '100%', height: '70vh' }}>
-        <Image 
-          src="/action_meditation.jpg" 
-          alt="Meditation Action" 
-          layout="fill"
-          className="rounded-lg"
-          style={{ filter: 'grayscale(80%)', objectFit: 'cover' }}
-        />
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-700 p-4 space-y-8">
-          <div className="bg-white bg-opacity-60 rounded-lg p-4 mb-8">
-            <p className="text-center text-lg">
-              瞑想により心拍数が下がり、リラックス傾向が高まりました。
-              先ほどより頭もすっきり冴えていることでしょう。
-              定期的に休憩を取り、午後も頑張りましょう！
-            </p>
-          </div>
-          <div className="flex space-x-8">
-            <div className="bg-white bg-opacity-60 rounded-lg p-4 text-center">
-              <p className="text-lg">最低心拍数</p>
-              <p className="text-2xl font-bold">80bpm</p>
-            </div>
-            <div className="bg-white bg-opacity-60 rounded-lg p-4 text-center">
-              <p className="text-lg">気分</p>
-              <p className="text-2xl font-bold">{getFeelingText()}</p>
-            </div>
-          </div>
-          <button
-            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-700 mt-8"
-            onClick={() => setShowResultModal(false)}
+      {showResultModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50"
+          onClick={() => setShowResultModal(false)}
+        >
+          <div
+            className="relative w-full max-w-screen-sm mx-auto flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
           >
-            アクティビティを終了する
-          </button>
+            <div style={{ position: 'relative', width: '100%', height: '70vh' }}>
+              <Image 
+                src="/action_meditation.jpg" 
+                alt="Meditation Action" 
+                layout="fill"
+                className="rounded-lg"
+                style={{ filter: 'grayscale(80%)', objectFit: 'cover' }}
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-700 p-4 space-y-8">
+                <div className="bg-white bg-opacity-60 rounded-lg p-4 mb-8">
+                  <p className="text-center text-lg">
+                    {evaluationMessage}
+                  </p>
+                </div>
+                <div className="flex space-x-8">
+                  <div className="bg-white bg-opacity-60 rounded-lg p-4 text-center">
+                    <p className="text-lg">最低心拍数</p>
+                    <p className="text-2xl font-bold">{heartRateAfter || 80}bpm</p>
+                  </div>
+                  <div className="bg-white bg-opacity-60 rounded-lg p-4 text-center">
+                    <p className="text-lg">気分</p>
+                    <p className="text-2xl font-bold">{getFeelingText()}</p>
+                  </div>
+                </div>
+                <button
+                  className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-700 mt-8"
+                  onClick={() => setShowResultModal(false)}
+                >
+                  アクティビティを終了する
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
-
-
+      )}
     </div>
   );
 }
