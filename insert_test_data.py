@@ -20,17 +20,44 @@ Base.metadata.create_all(bind=engine, tables=[Base.metadata.tables['users']])
 # テストデータの作成
 test_data = [
     User(
-        user_name="田中太郎",
+        user_name="高橋晃",
         email="new_test1@example.com",
         password=pwd_context.hash("password1"),
         oura_id=1,
         type_id=1,
         occupation_id="1",
-        overtime_id=10
+        overtime_id=20
     ),
     User(
-        user_name="山田花子",
+        user_name="山下里佳",
         email="new_test2@example.com",
+        password=pwd_context.hash("password2"),
+        oura_id=2,
+        type_id=2,
+        occupation_id="2",
+        overtime_id=20
+    ),
+    User(
+        user_name="井上充",
+        email="new_test3@example.com",
+        password=pwd_context.hash("password2"),
+        oura_id=1,
+        type_id=2,
+        occupation_id="2",
+        overtime_id=20
+    ),
+    User(
+        user_name="渡辺知実",
+        email="new_test4@example.com",
+        password=pwd_context.hash("password2"),
+        oura_id=1,
+        type_id=2,
+        occupation_id="2",
+        overtime_id=20
+    ),
+    User(
+        user_name="林淳",
+        email="new_test5@example.com",
         password=pwd_context.hash("password2"),
         oura_id=2,
         type_id=2,
