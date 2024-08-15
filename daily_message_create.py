@@ -140,7 +140,7 @@ def generate_gpt_response(coping_lists):
         try:
             chat_completion = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "あなたは疲れているビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。彼らは責任感が強く、休むことに対して罪悪感を感じる傾向があります。"},
+                    {"role": "system", "content": "あなたは残業が異常に多いビジネスマンに休憩の方法をアドバイスする、経験豊富なアドバイザーです。彼らは責任感が強く、休むことに対して罪悪感を感じる傾向があります。"},
                     {"role": "user", "content": "以下の休憩方法を50字以内で紹介してください。"},
                     {"role": "user", "content": f"{record.rest_type}"}
                 ],
@@ -178,18 +178,39 @@ def get_coping_results(db, user_id, today_date):
 
 # daily_messageを生成する関数
 def generate_daily_message_text(coping_results, todays_score, yesterdays_score):
-    if coping_results:
-        if todays_score >= yesterdays_score:
-            return '昨日より今日のほうがスコアが良い、または同じです。休息を取ったからですね。'
+    def get_score_comment(score):
+        if 0 <= score <= 59:
+            return '疲労が蓄積しています。あなたは十分に頑張っています。今は無理せず、心と体を休める時間を大切にしてください。自分を労わることも大切ですよ。'
+        elif 60 <= score <= 69:
+            return '少し疲れが出てきていますね。ペースを落とし、安心して休息を取りましょう。焦らずに、あなたのペースで進めば大丈夫です。'
+        elif 70 <= score <= 84:
+            return '体調は安定しています。少しリラックスして、無理せずに、休息も大切にしてください。'
+        elif 85 <= score <= 100:
+            return '体調がとても良い状態です。この良い状態を維持するために、適度に休息を取りながら、日々を過ごしましょう。'
         else:
-            return '昨日と比較してスコアは少し低下しています。休息を昨日よりも取るように心がけましょう。'
-    elif todays_score is None:
+            return 'スコアが不正です。'
+
+    # 当日スコアがNoneの場合
+    if todays_score is None:
         return '当日スコアがないため比較できません'
-    else:
-        if todays_score >= yesterdays_score:
-            return '日より今日のほうがスコアが良い、または同じです。この調子を維持するために、余裕があれば休息を取りましょう。'
+    
+    # coping_resultsがある場合
+    if coping_results:
+        if todays_score > yesterdays_score:
+            return f'昨日よりもスコアが良くなっていますね。{get_score_comment(todays_score)}'
+        elif todays_score == yesterdays_score:
+            return f'スコアは昨日と同じです。{get_score_comment(todays_score)}'
         else:
-            return '昨日と比較してスコアは少し低下しています。休息が取れていないので、積極的に休息を取りましょう。'
+            return f'昨日よりスコアが少し下がっていますが、焦らずにいきましょう。{get_score_comment(todays_score)}'
+    
+    # coping_resultsがない場合
+    else:
+        if todays_score > yesterdays_score:
+            return f'昨日よりもスコアが良くなっていますね。{get_score_comment(todays_score)}'
+        elif todays_score == yesterdays_score:
+            return f'スコアは昨日と同じです。{get_score_comment(todays_score)}'
+        else:
+            return f'昨日よりスコアが少し下がっています。{get_score_comment(todays_score)}'
 
 # daily_messageを保存する関数
 def save_daily_message(db, user_id, daily_message_text, yesterdays_score, todays_score):
