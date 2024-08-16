@@ -10,3 +10,4 @@ sqlalchemy
 pytz
 argon2_cffi
 python-dotenv
+python-multipart
