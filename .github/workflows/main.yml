@@ -2,6 +2,7 @@ name: ActionsTest
 
 on:
   schedule:
+    - cron: '0 0 * * *'  # 日本時間9時
     - cron: '0 3 * * *'  # 日本時間12時
     - cron: '0 6 * * *'  # 日本時間15時
     - cron: '0 9 * * *'  # 日本時間18時
@@ -23,6 +24,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run main.py
+      - name: Run daily_message_create.py
         run: |
-          python main.py
+          python daily_message_create.py
