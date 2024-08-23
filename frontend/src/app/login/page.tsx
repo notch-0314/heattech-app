@@ -18,7 +18,8 @@ const LoginPage: React.FC = () => {
             params.append('username', username);
             params.append('password', password);
 
-            const response = await axios.post('http://localhost:8000/token', params, {
+            const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
+            const response = await axios.post(`${baseURL}/token`, params, {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },

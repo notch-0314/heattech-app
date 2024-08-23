@@ -33,12 +33,14 @@ export default function Recommended() {
         router.push('/login'); 
         return;
       }
-
-      const response = await fetch('http://127.0.0.1:8000/coping_message', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      
+      const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const response = await fetch(`${baseURL}/coping_message`, {
+          headers: {
+              'Authorization': `Bearer ${token}`,
+          },
       });
+
 
       if (response.ok) {
         const data = await response.json();
@@ -62,14 +64,16 @@ export default function Recommended() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://127.0.0.1:8000/coping_start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ coping_message_id: copingMessageId }),
+      const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const response = await fetch(`${baseURL}/coping_start`, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ coping_message_id: copingMessageId }),
       });
+
 
       if (response.ok) {
         const data = await response.json();
@@ -100,17 +104,19 @@ export default function Recommended() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://127.0.0.1:8000/coping_finish', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ 
-          coping_message_id: copingMessages[0]?.coping_message_id || 1, // 最初のメッセージを使うか、デフォルトIDを使用
-          satisfaction_score: selectedOption,
-        }),
+      const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const response = await fetch(`${baseURL}/coping_finish`, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ 
+              coping_message_id: copingMessages[0]?.coping_message_id || 1, // 最初のメッセージを使うか、デフォルトIDを使用
+              satisfaction_score: selectedOption,
+          }),
       });
+
 
       if (response.ok) {
         const data = await response.json();
