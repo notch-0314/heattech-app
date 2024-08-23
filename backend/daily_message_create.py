@@ -59,16 +59,17 @@ def fetch_daily_readiness(api_key: str):
     response = requests.get(url, headers=headers, params=params)
     if response.status_code != 200:
         print(f"Failed to fetch data from API, status code: {response.status_code}")
-        return None, None
+        return 0, 0
 
     data = response.json()
     if not data['data']:
         print("No data found for today")
-        return None, None
+        return 0, 0
 
     # データからスコアを抽出
     scores = {entry['day']: entry['score'] for entry in data['data']}
-    return scores.get(yesterday_date), scores.get(today_date)
+    return scores.get(yesterday_date, 0), scores.get(today_date, 0)
+
 
 # ユーザーによってOuraAPIキーを変える関数
 def select_api_key(user):
