@@ -23,6 +23,7 @@ import pytz
 
 app = FastAPI()
 
+'''
 # CORSミドルウェアを追加
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +32,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+'''
+
 
 initialize_database()
 
