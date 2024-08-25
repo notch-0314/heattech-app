@@ -14,9 +14,13 @@ const LoginPage: React.FC = () => {
         e.preventDefault();
         setError(null);  // エラーメッセージをリセット
         try {
+            const encodedUsername = encodeURIComponent(username);
+            const encodedPassword = encodeURIComponent(password);
+
+            // エンコード済みのデータを使ってリクエストを送信
             const params = new URLSearchParams();
-            params.append('username', username);
-            params.append('password', password);
+            params.append('username', encodedUsername);
+            params.append('password', encodedPassword);
 
             const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
             const response = await axios.post(`${baseURL}/token`, params, {
